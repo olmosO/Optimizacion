@@ -5,125 +5,155 @@ import java.io.IOException;
 public class ExactCover {
 
     // ==============================
-    // BACKTRACKING BASE
+    // BACKTRACKING BASE (Sin copias en memoria)
     // ==============================
 
-    public static boolean exactCover(Set<Integer> X, List<Set<Integer>> S, List<Set<Integer>> solution) {
-        if (X.isEmpty()) return true;
+    public static boolean exactCover(int n, List<List<Integer>> S, List<List<Integer>> subsetsWithElement,
+                                         boolean[] covered, int coveredCount, List<Integer> solutionIndices) {
+        if (coveredCount == n) return true;
 
-        int x = X.iterator().next();
+        // Buscar el primer elemento no cubierto
+        int x = 1;
+        while (x <= n && covered[x]) x++;
+        if (x > n) return false;
 
-        for (Set<Integer> subset : S) {
-            if (subset.contains(x)) {
+        // Probar solo subconjuntos que contienen 'x'
+        for (int subsetIdx : subsetsWithElement.get(x)) {
+            List<Integer> subset = S.get(subsetIdx);
 
-                Set<Integer> newX = new HashSet<>(X);
-                List<Set<Integer>> newS = new ArrayList<>();
-
-                for (int elem : subset) {
-                    newX.remove(elem);
+            // Verificar si es válido (ningún elemento está ya cubierto)
+            boolean valid = true;
+            for (int elem : subset) {
+                if (covered[elem]) {
+                    valid = false;
+                    break;
                 }
+            }
 
-                for (Set<Integer> s : S) {
-                    boolean disjoint = true;
-                    for (int e : s) {
-                        if (subset.contains(e)) {
-                            disjoint = false;
-                            break;
-                        }
-                    }
-                    if (disjoint) newS.add(s);
-                }
+            if (valid) {
+                // AVANZAR (Marcar)
+                for (int elem : subset) covered[elem] = true;
+                solutionIndices.add(subsetIdx);
 
-                solution.add(subset);
-
-                if (exactCover(newX, newS, solution))
+                if (exactCover(n, S, subsetsWithElement, covered, coveredCount + subset.size(), solutionIndices))
                     return true;
 
-                solution.remove(solution.size() - 1);
+                // RETROCEDER / BACKTRACKING (Desmarcar)
+                solutionIndices.remove(solutionIndices.size() - 1);
+                for (int elem : subset) covered[elem] = false;
             }
         }
-
         return false;
     }
 
     // ==============================
-    // HEURÍSTICA
+    // HEURÍSTICA (Sin copias y con poda fuerte)
     // ==============================
 
-    public static int chooseBestElement(Set<Integer> X, List<Set<Integer>> S) {
-        int best = -1;
+    public static boolean exactCoverHeur(int n, List<List<Integer>> S, List<List<Integer>> subsetsWithElement,
+                                             boolean[] covered, int coveredCount, List<Integer> solutionIndices) {
+        if (coveredCount == n) return true;
+
+        int bestX = -1;
         int minCount = Integer.MAX_VALUE;
 
-        for (int x : X) {
-            int count = 0;
-            for (Set<Integer> s : S) {
-                if (s.contains(x)) count++;
-            }
-
-            if (count < minCount) {
-                minCount = count;
-                best = x;
-            }
-        }
-
-        return best;
-    }
-
-    public static boolean exactCoverHeuristic(Set<Integer> X, List<Set<Integer>> S, List<Set<Integer>> solution) {
-        if (X.isEmpty()) return true;
-
-        int x = chooseBestElement(X, S);
-
-        for (Set<Integer> subset : S) {
-            if (subset.contains(x)) {
-
-                Set<Integer> newX = new HashSet<>(X);
-                List<Set<Integer>> newS = new ArrayList<>();
-
-                for (int elem : subset) {
-                    newX.remove(elem);
-                }
-
-                for (Set<Integer> s : S) {
-                    boolean disjoint = true;
-                    for (int e : s) {
-                        if (subset.contains(e)) {
-                            disjoint = false;
+        // Buscar elemento no cubierto con menor cantidad de subconjuntos válidos
+        for (int i = 1; i <= n; i++) {
+            if (!covered[i]) {
+                int count = 0;
+                for (int subsetIdx : subsetsWithElement.get(i)) {
+                    boolean valid = true;
+                    for (int elem : S.get(subsetIdx)) {
+                        if (covered[elem]) {
+                            valid = false;
                             break;
                         }
                     }
-                    if (disjoint) newS.add(s);
+                    if (valid) count++;
                 }
 
-                solution.add(subset);
+                if (count < minCount) {
+                    minCount = count;
+                    bestX = i;
+                }
 
-                if (exactCoverHeuristic(newX, newS, solution))
-                    return true;
-
-                solution.remove(solution.size() - 1);
+                // PODA: Si un elemento no tiene subconjuntos válidos, esta rama es un callejón sin salida
+                if (minCount == 0) return false;
             }
         }
 
+        if (bestX == -1) return false;
+
+        for (int subsetIdx : subsetsWithElement.get(bestX)) {
+            List<Integer> subset = S.get(subsetIdx);
+
+            boolean valid = true;
+            for (int elem : subset) {
+                if (covered[elem]) {
+                    valid = false;
+                    break;
+                }
+            }
+
+            if (valid) {
+                // AVANZAR
+                for (int elem : subset) covered[elem] = true;
+                solutionIndices.add(subsetIdx);
+
+                if (exactCoverHeur(n, S, subsetsWithElement, covered, coveredCount + subset.size(), solutionIndices))
+                    return true;
+
+                // BACKTRACKING
+                solutionIndices.remove(solutionIndices.size() - 1);
+                for (int elem : subset) covered[elem] = false;
+            }
+        }
         return false;
+    }
+
+    // ==============================
+    // WRAPPERS PARA PREPARAR DATOS
+    // ==============================
+
+    public static boolean solveBase(int n, List<List<Integer>> S, List<Integer> solutionIndices) {
+        List<List<Integer>> subsetsWithElement = buildAdjacencyList(n, S);
+        boolean[] covered = new boolean[n + 1];
+        return exactCover(n, S, subsetsWithElement, covered, 0, solutionIndices);
+    }
+
+    public static boolean solveHeuristic(int n, List<List<Integer>> S, List<Integer> solutionIndices) {
+        List<List<Integer>> subsetsWithElement = buildAdjacencyList(n, S);
+        boolean[] covered = new boolean[n + 1];
+        return exactCoverHeur(n, S, subsetsWithElement, covered, 0, solutionIndices);
+    }
+
+    private static List<List<Integer>> buildAdjacencyList(int n, List<List<Integer>> S) {
+        List<List<Integer>> adj = new ArrayList<>(n + 1);
+        for (int i = 0; i <= n; i++) adj.add(new ArrayList<>());
+        for (int i = 0; i < S.size(); i++) {
+            for (int elem : S.get(i)) {
+                adj.get(elem).add(i);
+            }
+        }
+        return adj;
     }
 
     // ==============================
     // IMPRIMIR SOLUCIÓN
     // ==============================
 
-    public static void printSolution(List<Set<Integer>> solution) {
-        if (solution.isEmpty()) {
+    public static void printSolution(List<List<Integer>> S, List<Integer> solutionIndices) {
+        if (solutionIndices.isEmpty()) {
             System.out.println("No existe solución");
             return;
         }
-
         System.out.print("{ ");
-        for (Set<Integer> s : solution) {
+        for (int idx : solutionIndices) {
             System.out.print("{");
-            Iterator<Integer> it = s.iterator();
-            while (it.hasNext()) {
-                System.out.print(it.next());
-                if (it.hasNext()) System.out.print(",");
+            List<Integer> sub = S.get(idx);
+            for (int i = 0; i < sub.size(); i++) {
+                System.out.print(sub.get(i));
+                if (i < sub.size() - 1) System.out.print(",");
             }
             System.out.print("} ");
         }
@@ -131,133 +161,28 @@ public class ExactCover {
     }
 
     // ==============================
-    // CASOS DETERMINÍSTICOS
-    // ==============================
-
-    public static void testCases() {
-        System.out.println("===== CASOS DETERMINÍSTICOS =====");
-
-        // Caso 1
-        Set<Integer> X1 = new HashSet<>(Arrays.asList(1,2,3,4));
-        List<Set<Integer>> S1 = Arrays.asList(
-            new HashSet<>(Arrays.asList(1,2)),
-            new HashSet<>(Arrays.asList(2,3)),
-            new HashSet<>(Arrays.asList(3,4)),
-            new HashSet<>(Arrays.asList(1,4))
-        );
-
-        List<Set<Integer>> sol = new ArrayList<>();
-        exactCover(X1, S1, sol);
-        System.out.print("Caso 1 (Base): ");
-        printSolution(sol);
-
-        sol.clear();
-        exactCoverHeuristic(X1, S1, sol);
-        System.out.print("Caso 1 (Heur): ");
-        printSolution(sol);
-
-
-        // Caso 2 (sin solución)
-        Set<Integer> X2 = new HashSet<>(Arrays.asList(1,2,3));
-        List<Set<Integer>> S2 = Arrays.asList(
-            new HashSet<>(Arrays.asList(1,2)),
-            new HashSet<>(Arrays.asList(2,3))
-        );
-
-        sol.clear();
-        exactCover(X2, S2, sol);
-        System.out.print("Caso 2 (Base): ");
-        printSolution(sol);
-
-        sol.clear();
-        exactCoverHeuristic(X2, S2, sol);
-        System.out.print("Caso 2 (Heur): ");
-        printSolution(sol);
-
-
-        // Caso 3 (múltiples soluciones)
-        Set<Integer> X3 = new HashSet<>(Arrays.asList(1,2,3,4));
-        List<Set<Integer>> S3 = Arrays.asList(
-            new HashSet<>(Arrays.asList(1,2)),
-            new HashSet<>(Arrays.asList(3,4)),
-            new HashSet<>(Arrays.asList(1,3)),
-            new HashSet<>(Arrays.asList(2,4))
-        );
-
-        sol.clear();
-        exactCover(X3, S3, sol);
-        System.out.print("Caso 3 (Base): ");
-        printSolution(sol);
-
-        sol.clear();
-        exactCoverHeuristic(X3, S3, sol);
-        System.out.print("Caso 3 (Heur): ");
-        printSolution(sol);
-
-        System.out.println();
-    }
-
-    // ==============================
     // GENERADOR ALEATORIO
     // ==============================
 
-    public static Pair generateInstance(int n, int numSubsets) {
-        Set<Integer> X = new HashSet<>();
-        for (int i = 1; i <= n; i++) X.add(i);
+    static class Instance {
+        int n;
+        List<List<Integer>> S;
+        Instance(int n, List<List<Integer>> S) { this.n = n; this.S = S; }
+    }
 
-        List<Set<Integer>> S = new ArrayList<>();
+    public static Instance generateInstance(int n, int numSubsets) {
+        List<List<Integer>> S = new ArrayList<>();
         Random rand = new Random();
 
         for (int i = 0; i < numSubsets; i++) {
             int size = 2 + rand.nextInt(2);
             Set<Integer> subset = new HashSet<>();
-
             while (subset.size() < size) {
                 subset.add(rand.nextInt(n) + 1);
             }
-
-            S.add(subset);
+            S.add(new ArrayList<>(subset)); // Convertimos a List para acceso rápido
         }
-
-        return new Pair(X, S);
-    }
-
-    // ==============================
-    // TIEMPOS
-    // ==============================
-
-    public static double runBase(Set<Integer> X, List<Set<Integer>> S) {
-        List<Set<Integer>> solution = new ArrayList<>();
-
-        long start = System.nanoTime();
-        exactCover(X, S, solution);
-        long end = System.nanoTime();
-
-        return (end - start) / 1e9;
-    }
-
-    public static double runHeuristic(Set<Integer> X, List<Set<Integer>> S) {
-        List<Set<Integer>> solution = new ArrayList<>();
-
-        long start = System.nanoTime();
-        exactCoverHeuristic(X, S, solution);
-        long end = System.nanoTime();
-
-        return (end - start) / 1e9;
-    }
-
-    // ==============================
-    // CLASE AUXILIAR
-    // ==============================
-
-    static class Pair {
-        Set<Integer> X;
-        List<Set<Integer>> S;
-
-        Pair(Set<Integer> X, List<Set<Integer>> S) {
-            this.X = X;
-            this.S = S;
-        }
+        return new Instance(n, S);
     }
 
     // ==============================
@@ -265,18 +190,27 @@ public class ExactCover {
     // ==============================
 
     public static void main(String[] args) {
+        // CASOS DETERMINÍSTICOS
+        System.out.println("===== CASOS DETERMINÍSTICOS =====");
+        int n1 = 4;
+        List<List<Integer>> S1 = Arrays.asList(
+            Arrays.asList(1, 2), Arrays.asList(2, 3), Arrays.asList(3, 4), Arrays.asList(1, 4)
+        );
+        List<Integer> sol1 = new ArrayList<>();
+        solveBase(n1, S1, sol1);
+        System.out.print("Caso 1 (Base): "); printSolution(S1, sol1);
+        
+        sol1.clear();
+        solveHeuristic(n1, S1, sol1);
+        System.out.print("Caso 1 (Heur): "); printSolution(S1, sol1);
+        System.out.println();
 
-        // 🔹 1. Correctitud
-        testCases();
-
-        // 🔹 2. Experimentos
+        // EXPERIMENTOS
         int[] sizes = {6, 8, 10, 12, 14, 16, 18, 20, 40};
         int repetitions = 5;
 
-        try {
-            FileWriter writer = new FileWriter("results_java.csv");
+        try (FileWriter writer = new FileWriter("results_java.csv")) {
             writer.write("n,base,heur\n");
-
             System.out.println("===== EXPERIMENTOS =====");
 
             for (int n : sizes) {
@@ -284,23 +218,25 @@ public class ExactCover {
                 double heurTotal = 0;
 
                 for (int i = 0; i < repetitions; i++) {
-                    Pair instance = generateInstance(n, n * 2);
+                    Instance instance = generateInstance(n, n * 2);
 
-                    baseTotal += runBase(instance.X, instance.S);
-                    heurTotal += runHeuristic(instance.X, instance.S);
+                    List<Integer> solBase = new ArrayList<>();
+                    long startBase = System.nanoTime();
+                    solveBase(instance.n, instance.S, solBase);
+                    baseTotal += (System.nanoTime() - startBase) / 1e9;
+
+                    List<Integer> solHeur = new ArrayList<>();
+                    long startHeur = System.nanoTime();
+                    solveHeuristic(instance.n, instance.S, solHeur);
+                    heurTotal += (System.nanoTime() - startHeur) / 1e9;
                 }
 
                 double avgBase = baseTotal / repetitions;
                 double avgHeur = heurTotal / repetitions;
 
-                System.out.println("n=" + n +
-                        " | Base=" + avgBase +
-                        " | Heur=" + avgHeur);
-
+                System.out.printf("n=%d | Base=%.6f | Heur=%.6f\n", n, avgBase, avgHeur);
                 writer.write(n + "," + avgBase + "," + avgHeur + "\n");
             }
-
-            writer.close();
             System.out.println("\nResultados guardados en results_java.csv");
 
         } catch (IOException e) {
